@@ -1,0 +1,13 @@
+torch==2.0.1+cu117
+torchvision==0.15.2+cu117
+torchaudio==2.0.2+cu117
+tensorflow==2.19.0
+spacy==3.7.4
+thinc==8.2.5
+blis==0.7.11
+typer==0.9.4
+weasel==0.3.4
+numpy==1.26.4
+protobuf==5.26.1
+cloudpathlib==0.16.0
+smart-open==6.4.0
