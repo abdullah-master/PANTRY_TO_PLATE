@@ -23,9 +23,6 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        #camera-modal {
-            transition: opacity 0.3s ease;
-        }
         ::-webkit-scrollbar {
             width: 8px;
         }
@@ -61,7 +58,7 @@
                         <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
                             <label for="image-upload" class="flex items-center justify-center gap-2 bg-white border border-slate-300 text-slate-700 font-semibold py-2 px-5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer shadow-sm">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                                Upload Photos
+                                Upload Photo
                             </label>
                             <input type="file" id="image-upload" accept="image/*" class="hidden">
                         </div>
@@ -124,13 +121,15 @@
                             <span class="bg-violet-600 text-white rounded-full h-8 w-8 text-sm font-bold flex items-center justify-center mr-3">3</span> 
                             CNN Model Analysis
                         </h2>
+                        <p class="text-sm text-slate-600 mb-3">DenseNet121 architecture with 316 ingredient classes</p>
                         <div id="cnn-ingredients-list" class="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-lg border"></div>
                     </div>
                     <div class="mb-6">
                         <h2 class="text-2xl font-bold mb-4 text-slate-800 flex items-center">
                             <span class="bg-violet-600 text-white rounded-full h-8 w-8 text-sm font-bold flex items-center justify-center mr-3">4</span> 
-                            AI-Detected Ingredients
+                            AI-Enhanced Detection (Gemini Vision)
                         </h2>
+                        <p class="text-sm text-slate-600 mb-3">Advanced visual recognition and ingredient identification</p>
                         <div id="ai-ingredients-list" class="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-lg border"></div>
                     </div>
                 </div>
@@ -147,7 +146,7 @@
         </main>
 
         <footer class="text-center mt-10">
-            <p class="text-sm text-slate-500">&copy; 2025 Culinary Vision. All rights reserved.</p>
+            <p class="text-sm text-slate-500">&copy; 2025 Culinary Vision. Powered by CNN + Gemini AI</p>
         </footer>
     </div>
 
@@ -196,12 +195,12 @@
         // Main Logic
         findRecipesBtn.addEventListener('click', async () => {
             if (!uploadedImage) {
-                displayMessage('Please upload a photo of ingredients.', 'error');
+                displayMessage('⚠️ Please upload a photo of ingredients first!', 'error');
                 return;
             }
 
             resetResults();
-            setLoadingState(true, 'Processing image...');
+            setLoadingState(true, 'Analyzing image with CNN model...');
 
             try {
                 const formData = new FormData();
@@ -215,13 +214,17 @@
                 formData.append('diet', selectedDiet);
                 formData.append('allergies', JSON.stringify([...checkedAllergies, ...otherAllergies]));
 
+                // Update loading message
+                setTimeout(() => setLoadingState(true, 'Processing with Gemini Vision AI...'), 1000);
+
                 const response = await fetch('/analyze', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
-                    throw new Error('Failed to process image');
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
                 }
 
                 const data = await response.json();
@@ -230,15 +233,24 @@
                     throw new Error(data.error);
                 }
 
+                // Validate response structure
+                if (!data.cnn_results || !data.ai_results) {
+                    throw new Error('Invalid response format from server');
+                }
+
+                console.log('Received data:', data);
+
                 // Display CNN results
                 displayCNNIngredients(data.cnn_results);
                 
                 // Display AI results
                 displayAIResults(data.ai_results);
                 
+                displayMessage('✅ Analysis complete!', 'success');
+                
             } catch (error) {
                 console.error('Error:', error);
-                displayMessage(error.message, 'error');
+                displayMessage(`❌ Error: ${error.message}`, 'error');
             } finally {
                 setLoadingState(false);
             }
@@ -247,16 +259,23 @@
         // UI Display Functions
         function setLoadingState(isLoading, message = '') {
             findRecipesBtn.disabled = isLoading;
-            statusContainer.innerHTML = isLoading ? 
-                `<div class="flex justify-center items-center gap-2">
-                    <div class="loader"></div>
-                    <p class="text-slate-600">${message}</p>
-                </div>` : '';
+            if (isLoading) {
+                statusContainer.innerHTML = `
+                    <div class="flex justify-center items-center gap-3">
+                        <div class="loader"></div>
+                        <p class="text-slate-600 font-medium">${message}</p>
+                    </div>`;
+            }
         }
 
         function displayMessage(message, type = 'info') {
-            const color = type === 'error' ? 'text-red-600' : 'text-slate-600';
-            statusContainer.innerHTML = `<p class="${color} font-medium">${message}</p>`;
+            const colors = {
+                'error': 'text-red-600 bg-red-50 border-red-200',
+                'success': 'text-green-600 bg-green-50 border-green-200',
+                'info': 'text-blue-600 bg-blue-50 border-blue-200'
+            };
+            const colorClass = colors[type] || colors.info;
+            statusContainer.innerHTML = `<p class="${colorClass} font-medium py-2 px-4 rounded-lg border inline-block">${message}</p>`;
         }
         
         function resetResults() {
@@ -269,68 +288,94 @@
         }
 
         function displayCNNIngredients(cnnResults) {
+            if (!cnnResults || !cnnResults.ingredients || cnnResults.ingredients.length === 0) {
+                cnnIngredientsList.innerHTML = '<p class="text-slate-500">No ingredients detected by CNN</p>';
+                return;
+            }
+
             ingredientsSection.classList.remove('hidden');
             cnnIngredientsList.innerHTML = '';
             
             cnnResults.ingredients.forEach((ingredient, index) => {
                 const confidence = cnnResults.confidence_scores[index];
                 const tag = document.createElement('span');
-                tag.className = 'bg-indigo-100 text-indigo-800 text-sm font-semibold mr-2 px-3 py-1 rounded-full flex items-center gap-1';
+                tag.className = 'bg-indigo-100 text-indigo-800 text-sm font-semibold px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm';
                 tag.innerHTML = `
-                    ${ingredient}
-                    <span class="text-xs text-indigo-600">${(confidence * 100).toFixed(1)}%</span>
+                    <span>${ingredient}</span>
+                    <span class="text-xs text-indigo-600 bg-indigo-200 px-2 py-0.5 rounded-full">${(confidence * 100).toFixed(1)}%</span>
                 `;
                 cnnIngredientsList.appendChild(tag);
             });
         }
 
         function displayAIResults(aiResults) {
+            if (!aiResults) {
+                console.error('No AI results provided');
+                return;
+            }
+
             const data = typeof aiResults === 'string' ? JSON.parse(aiResults) : aiResults;
             
             // Display AI-detected ingredients
-            data.detected_ingredients.forEach(ingredient => {
-                const tag = document.createElement('span');
-                tag.className = 'bg-green-100 text-green-800 text-sm font-semibold mr-2 px-3 py-1 rounded-full';
-                tag.textContent = ingredient;
-                aiIngredientsList.appendChild(tag);
-            });
+            if (data.detected_ingredients && data.detected_ingredients.length > 0) {
+                aiIngredientsList.innerHTML = '';
+                data.detected_ingredients.forEach(ingredient => {
+                    const tag = document.createElement('span');
+                    tag.className = 'bg-green-100 text-green-800 text-sm font-semibold px-3 py-1.5 rounded-full shadow-sm';
+                    tag.textContent = ingredient;
+                    aiIngredientsList.appendChild(tag);
+                });
+            } else {
+                aiIngredientsList.innerHTML = '<p class="text-slate-500">No ingredients detected by AI</p>';
+            }
 
             // Display recipes
-            recipesSection.classList.remove('hidden');
-            recipesList.innerHTML = '';
+            if (data.suggested_recipes && data.suggested_recipes.length > 0) {
+                recipesSection.classList.remove('hidden');
+                recipesList.innerHTML = '';
 
-            data.suggested_recipes.forEach(recipe => {
-                const card = document.createElement('div');
-                card.className = 'bg-white p-6 rounded-xl border border-slate-200 shadow-lg transition-transform hover:scale-[1.02]';
-                card.innerHTML = `
-                    <h3 class="text-xl font-bold mb-2 text-slate-900">${recipe.name}</h3>
-                    <div class="grid md:grid-cols-2 gap-6 border-t border-slate-200 pt-4">
-                        <div>
-                            <h4 class="font-bold mb-2 text-slate-800 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-violet-600" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fill-rule="evenodd" d="M10 2a1 1 0 00-1 1v1a1 1 0 002 0V3a1 1 0 00-1-1zM4 4h3a3 3 0 006 0h3a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm12 5a1 1 0 100-2H4a1 1 0 100 2h12z" clip-rule="evenodd" />
-                                </svg>
-                                What You'll Need
-                            </h4>
-                            <ul class="list-disc list-inside text-slate-600 space-y-1 pl-2">
-                                ${recipe.ingredients.map(ing => `<li>${ing}</li>`).join('')}
-                            </ul>
+                data.suggested_recipes.forEach((recipe, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-white p-6 rounded-xl border border-slate-200 shadow-lg transition-transform hover:scale-[1.01] hover:shadow-xl';
+                    
+                    // Ensure instructions is an array
+                    const instructions = Array.isArray(recipe.instructions) 
+                        ? recipe.instructions 
+                        : [recipe.instructions];
+                    
+                    card.innerHTML = `
+                        <div class="flex items-start justify-between mb-4">
+                            <h3 class="text-xl font-bold text-slate-900">${recipe.name}</h3>
+                            <span class="bg-violet-100 text-violet-700 text-xs font-semibold px-2 py-1 rounded-full">Recipe ${index + 1}</span>
                         </div>
-                        <div>
-                            <h4 class="font-bold mb-2 text-slate-800 flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-violet-600" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
-                                </svg>
-                                How to Make It
-                            </h4>
-                            <ol class="list-decimal list-inside text-slate-600 space-y-2 pl-2">
-                                ${recipe.instructions.map(step => `<li>${step}</li>`).join('')}
-                            </ol>
+                        <div class="grid md:grid-cols-2 gap-6 border-t border-slate-200 pt-4">
+                            <div>
+                                <h4 class="font-bold mb-3 text-slate-800 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-violet-600" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 2a1 1 0 00-1 1v1a1 1 0 002 0V3a1 1 0 00-1-1zM4 4h3a3 3 0 006 0h3a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm12 5a1 1 0 100-2H4a1 1 0 100 2h12z" clip-rule="evenodd" />
+                                    </svg>
+                                    Ingredients
+                                </h4>
+                                <ul class="list-disc list-inside text-slate-600 space-y-1 pl-2">
+                                    ${recipe.ingredients.map(ing => `<li>${ing}</li>`).join('')}
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold mb-3 text-slate-800 flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-violet-600" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+                                    </svg>
+                                    Instructions
+                                </h4>
+                                <ol class="list-decimal list-inside text-slate-600 space-y-2 pl-2">
+                                    ${instructions.map(step => `<li>${step}</li>`).join('')}
+                                </ol>
+                            </div>
                         </div>
-                    </div>
-                `;
-                recipesList.appendChild(card);
-            });
+                    `;
+                    recipesList.appendChild(card);
+                });
+            }
         }
     </script>
 </body>

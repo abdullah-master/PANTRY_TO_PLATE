@@ -1,10 +1,11 @@
 import os
-import base64
+import json
 import time
 import google.generativeai as genai
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+from PIL import Image
 
 # Import CNN model for demo
 from cnn_model.model import FoodIngredientCNN
@@ -21,7 +22,6 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Configure Gemini API
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro-vision')
 
 # Setup upload directory
 UPLOAD_FOLDER = os.path.join(app.static_folder, "uploads")
@@ -58,52 +58,113 @@ def analyze_image():
     if not allowed_file(image.filename):
         return jsonify({"error": "Invalid file format. Please upload a PNG, JPG, or JPEG file."}), 400
 
+    # Get preferences
+    diet_preference = request.form.get('diet', 'None')
+    allergies_json = request.form.get('allergies', '[]')
+    try:
+        allergies = json.loads(allergies_json)
+    except:
+        allergies = []
+
     filename = secure_filename(image.filename)
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     image.save(filepath)
 
-    # --- Run CNN (Dummy for Presentation) ---
-    print("\n[STEP 1] Running CNN Model (Simulated DenseNet121)...")
+    # --- STEP 1: Run CNN Model (Dummy for Presentation) ---
+    print("\n" + "="*60)
+    print("[STEP 1] Running CNN Model (Simulated DenseNet121)...")
+    print("="*60)
     start = time.time()
-    cnn_results = cnn_model.predict(filepath)
-    print(f"[INFO] CNN Finished in {time.time() - start:.2f} seconds\n")
+    cnn_results = cnn_model.predict(filepath) if cnn_model else {"ingredients": [], "confidence_scores": []}
+    print(f"[INFO] CNN Processing Complete in {time.time() - start:.2f} seconds")
+    print(f"[INFO] CNN Detected: {', '.join(cnn_results['ingredients'])}")
+    print("="*60 + "\n")
 
-    # --- Run Gemini API (Real AI for detection + recipes) ---
-    print("[STEP 2] Calling Gemini API for Ingredient Detection & Recipe Generation...")
-
-    with open(filepath, "rb") as img_file:
-        img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
-
-    prompt = f"""
-    You are an expert chef and food vision model.
-    Given this food image (base64 below), identify key ingredients and suggest 3 recipes.
-    Respond in JSON format as:
-    {{
-      "ai_detected_ingredients": ["ingredient1", "ingredient2", ...],
-      "recipes": [
-        {{
-          "name": "Recipe Name",
-          "ingredients": ["ingredient1", "ingredient2", ...],
-          "instructions": "Step by step instructions"
-        }}
-      ]
-    }}
-    Image (base64): {img_base64[:500]}... (truncated)
-    """
-
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    # --- STEP 2: Run Gemini API (Real AI for detection + recipes) ---
+    print("="*60)
+    print("[STEP 2] Calling Gemini Vision API...")
+    print("="*60)
 
     try:
-        response = model.generate_content(prompt)
-        ai_response_text = response.text
-        print("[INFO] Gemini API response received successfully.")
-    except Exception as e:
-        print("[ERROR] Gemini API failed:", e)
-        return jsonify({"error": "Gemini API failed"}), 500
+        # Load image for Gemini
+        img = Image.open(filepath)
+        
+        # Initialize correct vision model
+        vision_model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Build preference context
+        preference_text = ""
+        if diet_preference and diet_preference != "None":
+            preference_text += f"\n- Dietary preference: {diet_preference}"
+        if allergies:
+            preference_text += f"\n- Allergies to avoid: {', '.join(allergies)}"
+        
+        # Create detailed prompt
+        prompt = f"""You are an expert food vision AI and chef assistant.
 
+Analyze this food image and provide:
+1. A comprehensive list of visible ingredients
+2. Three creative recipes using these ingredients
+
+{preference_text if preference_text else ""}
+
+IMPORTANT: Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
+{{
+  "detected_ingredients": ["ingredient1", "ingredient2", "ingredient3", ...],
+  "suggested_recipes": [
+    {{
+      "name": "Recipe Name",
+      "ingredients": ["ingredient1", "ingredient2", ...],
+      "instructions": ["Step 1 description", "Step 2 description", ...]
+    }}
+  ]
+}}
+
+Ensure all arrays are properly formatted and the JSON is valid."""
+
+        # Generate content with image
+        print("[INFO] Sending request to Gemini Vision API...")
+        response = vision_model.generate_content([prompt, img])
+        ai_response_text = response.text.strip()
+        
+        print("[INFO] Gemini API Response Received")
+        print(f"[INFO] Response Length: {len(ai_response_text)} characters")
+        
+        # Clean up response (remove markdown code blocks if present)
+        if ai_response_text.startswith("```json"):
+            ai_response_text = ai_response_text.replace("```json", "").replace("```", "").strip()
+        elif ai_response_text.startswith("```"):
+            ai_response_text = ai_response_text.replace("```", "").strip()
+        
+        # Parse JSON response
+        try:
+            ai_results = json.loads(ai_response_text)
+            print(f"[INFO] Successfully parsed AI response")
+            print(f"[INFO] AI Detected: {', '.join(ai_results.get('detected_ingredients', []))}")
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] JSON Parse Error: {e}")
+            print(f"[ERROR] Raw Response: {ai_response_text[:200]}...")
+            # Fallback response
+            ai_results = {
+                "detected_ingredients": ["Unable to parse ingredients"],
+                "suggested_recipes": [{
+                    "name": "Error: Invalid API Response",
+                    "ingredients": ["Please try again"],
+                    "instructions": ["The API returned an invalid response format."]
+                }]
+            }
+        
+        print("="*60 + "\n")
+
+    except Exception as e:
+        print(f"\n[ERROR] Gemini API Error: {str(e)}")
+        print("="*60 + "\n")
+        return jsonify({"error": f"Gemini API failed: {str(e)}"}), 500
+
+    # Return combined results
     return jsonify({
         "cnn_results": cnn_results,
-        "ai_response": ai_response_text,
+        "ai_results": ai_results,  # Changed from ai_response to ai_results
         "image_url": f"/static/uploads/{filename}"
     })
 
@@ -119,4 +180,10 @@ def internal_error(e):
 
 
 if __name__ == "__main__":
+    print("\n" + "="*60)
+    print("🍳 Culinary Vision - Pantry to Plate")
+    print("="*60)
+    print("[INFO] Starting Flask Application...")
+    print("[INFO] Access the app at: http://127.0.0.1:5000")
+    print("="*60 + "\n")
     app.run(debug=True)
