@@ -7,9 +7,6 @@ from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from PIL import Image
 
-# Import CNN model for demo
-from cnn_model.model import FoodIngredientCNN
-
 # Load environment variables and configure
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -27,14 +24,6 @@ genai.configure(api_key=GEMINI_API_KEY)
 UPLOAD_FOLDER = os.path.join(app.static_folder, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg"}
-
-# Initialize CNN model for demo
-try:
-    cnn_model = FoodIngredientCNN()
-    print("[INFO] CNN Model Demo initialized successfully!")
-except Exception as e:
-    print(f"[ERROR] CNN Model initialization failed: {e}")
-    cnn_model = None
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -70,17 +59,7 @@ def analyze_image():
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     image.save(filepath)
 
-    # --- STEP 1: Run CNN Model (Dummy for Presentation) ---
-    print("\n" + "="*60)
-    print("[STEP 1] Running CNN Model (Simulated DenseNet121)...")
-    print("="*60)
-    start = time.time()
-    cnn_results = cnn_model.predict(filepath) if cnn_model else {"ingredients": [], "confidence_scores": []}
-    print(f"[INFO] CNN Processing Complete in {time.time() - start:.2f} seconds")
-    print(f"[INFO] CNN Detected: {', '.join(cnn_results['ingredients'])}")
-    print("="*60 + "\n")
-
-    # --- STEP 2: Run Gemini API (Real AI for detection + recipes) ---
+    # --- STEP 1: Run Gemini API for ingredient detection and recipes ---
     print("="*60)
     print("[STEP 2] Calling Gemini Vision API...")
     print("="*60)
@@ -161,10 +140,13 @@ Ensure all arrays are properly formatted and the JSON is valid."""
         print("="*60 + "\n")
         return jsonify({"error": f"Gemini API failed: {str(e)}"}), 500
 
-    # Return combined results
+    # Return results
     return jsonify({
-        "cnn_results": cnn_results,
-        "ai_results": ai_results,  # Changed from ai_response to ai_results
+        "cnn_results": {
+            "ingredients": ai_results.get("detected_ingredients", []),
+            "confidence_scores": [0.95] * len(ai_results.get("detected_ingredients", []))  # Constant confidence for simplicity
+        },
+        "ai_results": ai_results,
         "image_url": f"/static/uploads/{filename}"
     })
 

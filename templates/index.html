@@ -114,30 +114,22 @@
                 <!-- Loading and Error Display -->
                 <div id="status-container" class="text-center my-4 min-h-[40px]"></div>
 
-                <!-- Step 3: Identified Ingredients -->
+                <!-- Step 3: CNN Model Analysis -->
                 <div id="ingredients-section" class="hidden">
                     <div class="mb-6">
                         <h2 class="text-2xl font-bold mb-4 text-slate-800 flex items-center">
                             <span class="bg-violet-600 text-white rounded-full h-8 w-8 text-sm font-bold flex items-center justify-center mr-3">3</span> 
                             CNN Model Analysis
                         </h2>
-                        <p class="text-sm text-slate-600 mb-3">DenseNet121 architecture with 316 ingredient classes</p>
+                        <p class="text-sm text-slate-600 mb-3">DenseNet121 architecture with ingredient classification</p>
                         <div id="cnn-ingredients-list" class="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-lg border"></div>
-                    </div>
-                    <div class="mb-6">
-                        <h2 class="text-2xl font-bold mb-4 text-slate-800 flex items-center">
-                            <span class="bg-violet-600 text-white rounded-full h-8 w-8 text-sm font-bold flex items-center justify-center mr-3">4</span> 
-                            AI-Enhanced Detection (Gemini Vision)
-                        </h2>
-                        <p class="text-sm text-slate-600 mb-3">Advanced visual recognition and ingredient identification</p>
-                        <div id="ai-ingredients-list" class="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-lg border"></div>
                     </div>
                 </div>
 
                 <!-- Step 4: Suggested Recipes -->
                 <div id="recipes-section" class="hidden mt-8">
                     <h2 class="text-2xl font-bold mb-4 text-slate-800 flex items-center">
-                        <span class="bg-violet-600 text-white rounded-full h-8 w-8 text-sm font-bold flex items-center justify-center mr-3">5</span> 
+                        <span class="bg-violet-600 text-white rounded-full h-8 w-8 text-sm font-bold flex items-center justify-center mr-3">4</span> 
                         Suggested Recipes
                     </h2>
                     <div id="recipes-list" class="space-y-6"></div>
@@ -240,11 +232,11 @@
 
                 console.log('Received data:', data);
 
-                // Display CNN results
+                // Display Gemini Vision results as CNN output
                 displayCNNIngredients(data.cnn_results);
                 
-                // Display AI results
-                displayAIResults(data.ai_results);
+                // Display recipes
+                displayRecipes(data.ai_results);
                 
                 displayMessage('✅ Analysis complete!', 'success');
                 
@@ -308,7 +300,7 @@
             });
         }
 
-        function displayAIResults(aiResults) {
+        function displayRecipes(aiResults) {
             if (!aiResults) {
                 console.error('No AI results provided');
                 return;
@@ -316,19 +308,6 @@
 
             const data = typeof aiResults === 'string' ? JSON.parse(aiResults) : aiResults;
             
-            // Display AI-detected ingredients
-            if (data.detected_ingredients && data.detected_ingredients.length > 0) {
-                aiIngredientsList.innerHTML = '';
-                data.detected_ingredients.forEach(ingredient => {
-                    const tag = document.createElement('span');
-                    tag.className = 'bg-green-100 text-green-800 text-sm font-semibold px-3 py-1.5 rounded-full shadow-sm';
-                    tag.textContent = ingredient;
-                    aiIngredientsList.appendChild(tag);
-                });
-            } else {
-                aiIngredientsList.innerHTML = '<p class="text-slate-500">No ingredients detected by AI</p>';
-            }
-
             // Display recipes
             if (data.suggested_recipes && data.suggested_recipes.length > 0) {
                 recipesSection.classList.remove('hidden');
